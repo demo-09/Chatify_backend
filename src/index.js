@@ -25,7 +25,7 @@ app.use(
         origin:
             process.env.NODE_ENV === "development"
                 ? "http://localhost:5173"
-                : "https://your-frontend.vercel.app",
+                : "https://chatify-frontend-sigma.vercel.app/",
 
         credentials: true,
     })
