@@ -3,6 +3,7 @@ import Message from "../models/message.model.js";
 
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import { generateAiResponse } from "../lib/ai.service.js";
 
 export const getUsersForSidebar = async (req, res) => {
   try {
@@ -60,6 +61,26 @@ export const sendMessage = async (req, res) => {
     const receiverSocketId = getReceiverSocketId(receiverId);
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("newMessage", newMessage);
+    }
+
+    // AI AUTO-REPLY LOGIC
+    const receiver = await User.findById(receiverId);
+    if (receiver && receiver.email === "ai@chatify.com") {
+      const aiResponse = await generateAiResponse(text);
+      
+      const aiMessage = new Message({
+        senderId: receiverId,
+        receiverId: senderId,
+        text: aiResponse,
+      });
+
+      await aiMessage.save();
+      
+      // Emit back to sender
+      const senderSocketId = getReceiverSocketId(senderId);
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("newMessage", aiMessage);
+      }
     }
 
     res.status(201).json(newMessage);
