@@ -30,6 +30,7 @@ app.use(cookieParser());
 app.use(
     cors({
         origin: [
+          "http://localhost:5173",
             "https://chatify-frontend-sigma.vercel.app",
         ],
         credentials: true,
