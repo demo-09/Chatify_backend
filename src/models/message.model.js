@@ -10,12 +10,24 @@ const messageSchema = new mongoose.Schema(
     receiverId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+    },
+    groupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Group",
     },
     text: {
       type: String,
     },
     image: {
+      type: String,
+    },
+    file: {
+      type: String,
+    },
+    fileName: {
+      type: String,
+    },
+    audio: {
       type: String,
     },
   },

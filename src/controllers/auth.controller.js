@@ -25,26 +25,25 @@ export const signup = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
     const newUser = new User({
       fullName,
       email,
       password: hashedPassword,
+      isVerified: false,
+      otp,
+      otpExpires,
     });
 
-    if (newUser) {
-      // generate jwt token here
-      generateToken(newUser._id, res);
-      await newUser.save();
+    await newUser.save();
+    await sendOtpEmail(email, otp);
 
-      res.status(201).json({
-        _id: newUser._id,
-        fullName: newUser.fullName,
-        email: newUser.email,
-        profilePic: newUser.profilePic,
-      });
-    } else {
-      res.status(400).json({ message: "Invalid user data" });
-    }
+    res.status(201).json({
+      message: "OTP sent to your email. Please verify to complete signup.",
+      email: newUser.email,
+    });
   } catch (error) {
     console.log("Error in signup controller", error.message);
     res.status(500).json({ message: "Internal Server Error" });
@@ -65,13 +64,19 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    generateToken(user._id, res);
+    // Send OTP for login
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+    user.otp = otp;
+    user.otpExpires = otpExpires;
+    await user.save();
+
+    await sendOtpEmail(email, otp);
 
     res.status(200).json({
-      _id: user._id,
-      fullName: user.fullName,
+      message: "OTP sent to your email. Please verify to login.",
       email: user.email,
-      profilePic: user.profilePic,
     });
   } catch (error) {
     console.log("Error in login controller", error.message);
@@ -177,10 +182,19 @@ export const logout = (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { profilePic, fullName, currentPassword, newPassword } = req.body;
+    const { profilePic, fullName, currentPassword, newPassword, otp } = req.body;
     const userId = req.user._id;
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Verify OTP for any update
+    if (!otp || user.otp !== otp || user.otpExpires < new Date()) {
+      return res.status(400).json({ message: "Invalid or expired OTP. Please verify to update profile." });
+    }
+
+    // Clear OTP after verification
+    user.otp = null;
+    user.otpExpires = null;
 
     const updates = {};
 
@@ -211,11 +225,16 @@ export const updateProfile = async (req, res) => {
       updates.password = await bcrypt.hash(newPassword, salt);
     }
 
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ message: "No valid fields to update" });
+    if (Object.keys(updates).length === 0 && !profilePic) {
+       await user.save(); // Save to clear OTP
+       return res.status(400).json({ message: "No valid fields to update" });
     }
 
-    const updatedUser = await User.findByIdAndUpdate(userId, updates, { new: true }).select("-password");
+    // Merge updates into user object and save
+    Object.assign(user, updates);
+    await user.save();
+
+    const updatedUser = await User.findById(userId).select("-password");
     res.status(200).json(updatedUser);
   } catch (error) {
     console.log("error in update profile:", error);
@@ -229,5 +248,24 @@ export const checkAuth = (req, res) => {
   } catch (error) {
     console.log("Error in checkAuth controller", error.message);
     res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const sendUpdateOtp = async (req, res) => {
+  try {
+    const email = req.user.email;
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
+    const user = await User.findById(req.user._id);
+    user.otp = otp;
+    user.otpExpires = otpExpires;
+    await user.save();
+
+    await sendOtpEmail(email, otp);
+    res.status(200).json({ message: "Update verification OTP sent to your email" });
+  } catch (error) {
+    console.error("Error in sendUpdateOtp:", error);
+    res.status(500).json({ message: "Failed to send OTP" });
   }
 };

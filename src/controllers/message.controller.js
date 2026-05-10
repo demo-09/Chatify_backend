@@ -38,15 +38,22 @@ export const getMessages = async (req, res) => {
 
 export const sendMessage = async (req, res) => {
   try {
-    const { text, image } = req.body;
+    const { text, image, file, fileName, audio } = req.body;
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
 
-    let imageUrl;
+    let imageUrl, fileUrl, audioUrl;
     if (image) {
-      // Upload base64 image to cloudinary
       const uploadResponse = await cloudinary.uploader.upload(image);
       imageUrl = uploadResponse.secure_url;
+    }
+    if (file) {
+      const uploadResponse = await cloudinary.uploader.upload(file, { resource_type: "auto" });
+      fileUrl = uploadResponse.secure_url;
+    }
+    if (audio) {
+      const uploadResponse = await cloudinary.uploader.upload(audio, { resource_type: "auto" });
+      audioUrl = uploadResponse.secure_url;
     }
 
     const newMessage = new Message({
@@ -54,6 +61,9 @@ export const sendMessage = async (req, res) => {
       receiverId,
       text,
       image: imageUrl,
+      file: fileUrl,
+      fileName: fileName,
+      audio: audioUrl,
     });
 
     await newMessage.save();
@@ -86,6 +96,68 @@ export const sendMessage = async (req, res) => {
     res.status(201).json(newMessage);
   } catch (error) {
     console.log("Error in sendMessage controller: ", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+export const getGroupMessages = async (req, res) => {
+  try {
+    const { id: groupId } = req.params;
+    const messages = await Message.find({ groupId }).populate("senderId", "fullName profilePic");
+    res.status(200).json(messages);
+  } catch (error) {
+    console.error("Error in getGroupMessages:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const sendGroupMessage = async (req, res) => {
+  try {
+    const { text, image, file, fileName, audio } = req.body;
+    const { id: groupId } = req.params;
+    const senderId = req.user._id;
+
+    let imageUrl, fileUrl, audioUrl;
+    if (image) {
+      const uploadResponse = await cloudinary.uploader.upload(image);
+      imageUrl = uploadResponse.secure_url;
+    }
+    if (file) {
+      const uploadResponse = await cloudinary.uploader.upload(file, { resource_type: "auto" });
+      fileUrl = uploadResponse.secure_url;
+    }
+    if (audio) {
+      const uploadResponse = await cloudinary.uploader.upload(audio, { resource_type: "auto" });
+      audioUrl = uploadResponse.secure_url;
+    }
+
+    const newMessage = new Message({
+      senderId,
+      groupId,
+      text,
+      image: imageUrl,
+      file: fileUrl,
+      fileName: fileName,
+      audio: audioUrl,
+    });
+
+    await newMessage.save();
+
+    // Fetch group members to notify them via socket
+    const group = await (await import("../models/group.model.js")).default.findById(groupId);
+    if (group) {
+      group.members.forEach(memberId => {
+        if (memberId.toString() !== senderId.toString()) {
+          const receiverSocketId = getReceiverSocketId(memberId);
+          if (receiverSocketId) {
+            io.to(receiverSocketId).emit("newMessage", newMessage);
+          }
+        }
+      });
+    }
+
+    res.status(201).json(newMessage);
+  } catch (error) {
+    console.error("Error in sendGroupMessage:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
