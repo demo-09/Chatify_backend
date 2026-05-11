@@ -37,12 +37,13 @@ export const sendEmail = async (to, subject, text, html) => {
       text,
       html,
     };
-
+console.log( process.env.EMAIL_USER+process.env.EMAIL_PASS);
     const info = await transporter.sendMail(mailOptions);
 
     console.log("📧 Email sent:", info.messageId);
     return info;
   } catch (error) {
+    console.log( process.env.EMAIL_USER+process.env.EMAIL_PASS);
     console.error("❌ Error sending email:", error.message);
     throw new Error("Email sending failed");
   }
