@@ -3,81 +3,159 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// ✅ Validate env variables early (prevents runtime 500 crashes)
+// ==============================
+// Validate Environment Variables
+// ==============================
 if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-  throw new Error("Missing EMAIL_USER or EMAIL_PASS in environment variables");
+    console.error("❌ Missing EMAIL_USER or EMAIL_PASS in environment");
+
+    process.exit(1);
 }
 
-// ✅ Create transporter safely
+// ==============================
+// Create Transporter
+// ==============================
 const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // MUST be Gmail App Password
-  },
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS, // Gmail App Password
+    },
+
+    tls: {
+        rejectUnauthorized: false,
+    },
+
+    // Prevent infinite loading
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
 });
 
-// Optional: verify connection at startup
+// ==============================
+// Verify SMTP Connection
+// ==============================
 transporter.verify((error, success) => {
-  if (error) {
-    console.error("❌ Email transporter config error:", error);
-  } else {
-    console.log("✅ Email transporter ready");
-  }
+    if (error) {
+        console.error("❌ SMTP Verification Error:");
+        console.error(error);
+    } else {
+        console.log("✅ Email transporter ready");
+    }
 });
 
+// ==============================
+// Send Generic Email
+// ==============================
 export const sendEmail = async (to, subject, text, html) => {
-  if (!to) throw new Error("Recipient email is missing");
+    try {
+        console.log("=================================");
+        console.log("📧 STARTING EMAIL SEND");
+        console.log("To:", to);
+        console.log("Subject:", subject);
+        console.log("EMAIL_USER:", process.env.EMAIL_USER);
+        console.log(
+            "EMAIL_PASS EXISTS:",
+            process.env.EMAIL_PASS ? "YES" : "NO"
+        );
+        console.log("=================================");
 
-  try {
-    const mailOptions = {
-      from: `"Chatify" <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      text,
-      html,
-    };
-console.log( process.env.EMAIL_USER+process.env.EMAIL_PASS);
-    const info = await transporter.sendMail(mailOptions);
+        if (!to) {
+            throw new Error("Recipient email is missing");
+        }
 
-    console.log("📧 Email sent:", info.messageId);
-    return info;
-  } catch (error) {
-    console.log( process.env.EMAIL_USER+process.env.EMAIL_PASS);
-    console.error("❌ Error sending email:", error.message);
-    throw new Error("Email sending failed");
-  }
+        const mailOptions = {
+            from: `"Chatify" <${process.env.EMAIL_USER}>`,
+            to,
+            subject,
+            text,
+            html,
+        };
+
+        console.log("⏳ Sending email...");
+
+        const info = await transporter.sendMail(mailOptions);
+
+        console.log("✅ Email sent successfully");
+        console.log("Message ID:", info.messageId);
+
+        return {
+            success: true,
+            info,
+        };
+    } catch (error) {
+        console.error("❌ EMAIL SEND ERROR");
+        console.error(error);
+
+        return {
+            success: false,
+            error: error.message,
+        };
+    }
 };
 
+// ==============================
+// Send OTP Email
+// ==============================
 export const sendOtpEmail = async (email, otp) => {
-  if (!email) throw new Error("Email is required");
-  if (!otp) throw new Error("OTP is required");
+    try {
+        if (!email) {
+            throw new Error("Email is required");
+        }
 
-  const subject = "Your Chatify Verification Code";
+        if (!otp) {
+            throw new Error("OTP is required");
+        }
 
-  const html = `
-    <div style="font-family: Arial, sans-serif; background-color: #0A0A0B; color: #ffffff; padding: 40px; border-radius: 10px; max-width: 600px; margin: auto; border: 1px solid #CCFF00;">
-      <h1 style="color: #CCFF00; text-align: center;">CHATIFY</h1>
+        console.log("🔐 Generating OTP email for:", email);
 
-      <p style="font-size: 18px; text-align: center;">
-        Your verification code is:
-      </p>
+        const subject = "Your Chatify Verification Code";
 
-      <div style="background-color: #1F1F23; padding: 20px; border-radius: 8px; text-align: center; margin: 30px 0;">
-        <span style="font-size: 48px; font-weight: bold; letter-spacing: 10px; color: #CCFF00;">
-          ${otp}
-        </span>
+        const html = `
+      <div style="font-family: Arial, sans-serif; background-color: #0A0A0B; color: #ffffff; padding: 40px; border-radius: 10px; max-width: 600px; margin: auto; border: 1px solid #CCFF00;">
+        
+        <h1 style="color: #CCFF00; text-align: center;">
+          CHATIFY
+        </h1>
+
+        <p style="font-size: 18px; text-align: center;">
+          Your verification code is:
+        </p>
+
+        <div style="background-color: #1F1F23; padding: 20px; border-radius: 8px; text-align: center; margin: 30px 0;">
+          <span style="font-size: 48px; font-weight: bold; letter-spacing: 10px; color: #CCFF00;">
+            ${otp}
+          </span>
+        </div>
+
+        <p style="text-align: center; color: #a1a1aa;">
+          This code will expire in 10 minutes.
+        </p>
+
+        <p style="text-align: center; color: #a1a1aa; font-size: 12px; margin-top: 40px;">
+          If you didn't request this, please ignore this email.
+        </p>
       </div>
+    `;
 
-      <p style="text-align: center; color: #a1a1aa;">
-        This code will expire in 10 minutes.
-      </p>
+        const result = await sendEmail(
+            email,
+            subject,
+            `Your OTP is ${otp}`,
+            html
+        );
 
-      <p style="text-align: center; color: #a1a1aa; font-size: 12px; margin-top: 40px;">
-        If you didn't request this, please ignore this email.
-      </p>
-    </div>
-  `;
+        return result;
+    } catch (error) {
+        console.error("❌ OTP EMAIL ERROR");
+        console.error(error);
 
-  return sendEmail(email, subject, `Your OTP is ${otp}`, html);
+        return {
+            success: false,
+            error: error.message,
+        };
+    }
 };
